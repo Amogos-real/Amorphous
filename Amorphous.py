@@ -1,22 +1,22 @@
 from google import genai
 from google.genai import types
-# import wikipedia
 import discord
 import requests
 import random
 import re
+import os
 import threading
+import getpass
+import json
 
 from time import sleep
 import os, os.path
-
 
 def update_watcher():
     while True:
         sleep(20)
         if os.path.exists("update2"):
             break
-
 
 channel_sep = True
 threading.Thread(target=update_watcher).start()
@@ -26,12 +26,64 @@ intents = discord.Intents.all()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-# Config_start
-amorphous_config = {"""shape-name""": os.environ.get("Name"),
-                    """backstory""": os.environ.get("Rp"),
-                    """token""": os.environ.get("Discord"),
-                    """api_key""": os.environ.get("Gemini"),
-                    """prefix""": os.environ.get("Id"), """hosting""": """download"""}
+
+print("Tell me your Shape's information and I will save it and run the bot.")
+
+def write_backstory():
+    print()
+    print("Type '$done' exactly as is, in a line, when you're done writing the backstory!")
+    print()
+    index = 0
+    line = ""
+    lines = []
+    while line != "$done":
+        if index == 0:
+            line = input("Backstory: ")
+        else:
+            line = input(".......... ")
+        lines.append(line)
+        index += 1
+    return '\n'.join(lines[:-1])
+    
+shape_name = input("Shape name: ")
+file_exists = f"{shape_name}.json" in os.listdir()
+if not file_exists:
+    backstory = write_backstory()
+    prefix = input("Prefix: ")
+    if not prefix:
+        print("Warning: Prefix is empty, may cause unexpected behavior. Did you intend to do this?")
+    token = getpass.getpass("Discord Bot Token: ")
+    gemini_api_key = getpass.getpass("Gemini API key: ")
+    if not token or not gemini_api_key:
+        print("ERROR: Discord Bot Token and/or Gemini API key must not be empty, exiting.")
+        exit()
+    print()
+    print("I recommend using only one Discord User ID that belongs to you, the owner of the Shape.")
+    BYPASS_ID = input("Comma-separated list of Discord User IDs that are allowed to bypass certain permission checks: ").split(",")
+else:
+    content = open(f'{shape_name}.json', 'r', encoding='utf-8').read()
+    content = json.loads(content)
+    backstory = content['backstory']
+    prefix = content['prefix']
+    token = content['token']
+    gemini_api_key = content['api_key']
+    BYPASS_ID = content['bypass_id']
+    print()
+    print(f"Successfully loaded data for {shape_name}, proceeding.")
+    print()
+    
+amorphous_config = {"""shape-name""": shape_name,
+                    """backstory""": backstory,
+                    """token""": token,
+                    """api_key""": gemini_api_key,
+                    """prefix""": prefix, 
+                    """bypass_id""": bypass_id,
+                    """hosting""": """download"""}
+
+if not file_exists:
+    with open(f"{shape_name}.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(amorphous_config))
+        
 # Config_end
 rp = amorphous_config["backstory"]
 prefix = amorphous_config["prefix"]
@@ -99,7 +151,7 @@ def update_convo(conversation, guild_id):
 
 async def check_permissions(message):
     # Allow user with specific ID to bypass permission checks
-    if message.author.id == ur id ig here:
+    if message.author.id in BYPASS_ID:
         return True
     if not (message.author.guild_permissions.manage_guild or message.author.guild_permissions.administrator):
         await message.channel.send("You need 'Manage Server' or 'Administrator' permissions to use this command.")
