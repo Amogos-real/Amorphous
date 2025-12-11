@@ -2,9 +2,9 @@ from google import genai
 from google.genai import types
 search_tool = types.Tool(google_search=types.GoogleSearch())
 
-# import wikipedia # Not used in your code, can be removed to keep it cleaner
+# import wikipedia
 import discord
-from discord.ext import commands # IMPORTANT: Switched to commands.Bot
+from discord.ext import commands # IMPORTANT: I PASSED MY TEST!!!!
 import requests
 import random
 import re
@@ -16,9 +16,9 @@ import unicodedata # Added for Unicode normalization to enhance security
 
 from time import sleep
 import os, os.path
-#from keep_alive import keep_alive
+from keep_alive import keep_alive
 
-#keep_alive() FROGOR TO COMMENT IT
+keep_alive()
 
 
 def update_watcher():
@@ -38,6 +38,7 @@ threading.Thread(target=update_watcher).start()
 # [{"role": "user", "parts": [{"text": "user message"}]},
 #  {"role": "model", "parts": [{"text": "bot response"}]}]
 bot_configs = {}
+user_custom_names = {} # --- NEW: Dictionary to store custom user names ---
 # --- END CHANGE 1 ---
 
 intents = discord.Intents.all()
@@ -50,9 +51,38 @@ client = commands.Bot(command_prefix='!unusedprefix!', intents=intents)
 amorphous_config = {"""shape-name""": os.environ.get("Name"),
                     """backstory""": os.environ.get("Rp"),
                     """token""": os.environ.get("Discord"),
-                    """api_key""": os.environ.get("Gemini"),
                     """prefix""": os.environ.get("Id"), """hosting""": """download"""}
+Trusted=os.environ.get("User")
 # Config_end
+
+# Load primary and fallback tokens
+api_keys = []
+
+# i got homework help
+primary_token = os.environ.get("Gemini1")
+if primary_token:
+    api_keys.append(primary_token)
+
+# fallback to gemini cuz funni
+if not primary_token and os.environ.get("Gemini"):
+    api_keys.append(os.environ.get("Gemini"))
+
+# Look for fallback tokens Gemini2 through Gemini8
+for i in range(2, 9):
+    fallback_key = os.environ.get(f"Gemini{i}")
+    if fallback_key:
+        if fallback_key not in api_keys:
+            api_keys.append(fallback_key)
+
+# ai
+available_models = [
+    'gemini-2.0-flash', #pray that google makes it free again
+    'gemini-2.5-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-robotics-er-1.5-preview',
+    'gemini-2.5-flash-lite'
+]
+# --- END TOKEN & MODEL SETUP ---
 
 # --- IMPORTANT CHANGE 2: `rp` is now `system_instruction_content` with added security rules. ---
 # This is your bot's core persona and its most crucial anti-injection defense.
@@ -125,14 +155,14 @@ Everything below is what the user is saying!
 # --- END CHANGE 2 ---
 
 prefix = amorphous_config["prefix"]
-gemini_api_key = amorphous_config["api_key"]
 token = amorphous_config["token"]
 shape_name = amorphous_config["shape-name"]
 knowledge_db = []
-real_user = os.environ.get("User")
-# Trusted user
-TRUSTED_USERS = [real_user]
-TRUSTED_USERS_FILE = "trusted_users.json" # jason
+
+# Trusted users system
+TRUSTED_USERS = [Trusted]  # admin abuse🤑🤑🤑🤑🤑
+TRUSTED_USERS_FILE = "trusted_users.json" # File is kept, but no commands to modify it
+CUSTOM_NAMES_FILE = "user_names.json" # userz
 
 def load_trusted_users():
     """Load trusted users from file"""
@@ -156,6 +186,31 @@ def save_trusted_users():
     except Exception as e:
         print(f"Error saving trusted users: {e}")
 
+# --- NEW: Functions to load and save custom user names ---
+def load_custom_names():
+    """Load custom user names from file"""
+    global user_custom_names
+    try:
+        if os.path.exists(CUSTOM_NAMES_FILE):
+            with open(CUSTOM_NAMES_FILE, 'r') as f:
+                # Keys from JSON are strings, convert them back to integers (user IDs)
+                user_custom_names = {int(k): v for k, v in json.load(f).items()}
+    except Exception as e:
+        print(f"Error loading custom user names: {e}")
+
+def save_custom_names():
+    """Save custom user names to file"""
+    try:
+        with open(CUSTOM_NAMES_FILE, 'w') as f:
+            json.dump(user_custom_names, f)
+    except Exception as e:
+        print(f"Error saving custom user names: {e}")
+
+def get_user_display_name(user: discord.User):
+    """Gets the user's custom name if set, otherwise their display name."""
+    return user_custom_names.get(user.id, user.display_name)
+# --- END NEW ---
+
 def is_trusted_user(user_id):
     """Check if user is trusted"""
     return user_id in TRUSTED_USERS
@@ -166,20 +221,16 @@ def can_moderate(user_id, guild_permissions):
 
 # Load trusted users on startup
 load_trusted_users()
+load_custom_names() # --- NEW: Load custom names on startup ---
 
-model = 'gemini-2.0-flash'
-model1= 'gemini-2.5-flash'
-model2= 'gemini-2.0-flash-lite'
-model3= 'gemini-2.5-pro'
-model4= 'gemini-2.5-flash-lite'
-
-gemini_client = genai.Client(
-    api_key=gemini_api_key,
-    http_options=types.HttpOptions(api_version='v1alpha')
-)
+# Use model names in string for display/logging if needed, actual iteration happens in gen()
+model = available_models[0] # Primary
+model1= available_models[1] # Backup 1
+model2= available_models[2] # Backup 2
+model3= available_models[3] # Backup 3
+model4= available_models[4] # Backup 4
 
 # Your existing safety settings (all BLOCK_NONE).
-# I am not changing these, as per your explicit request.
 safety_settings = [
     types.SafetySetting(
         category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -232,6 +283,20 @@ async def check_permissions(message):
         return False
     return True
 
+async def check_admin_or_trusted(message):
+    """Check if a user is a trusted user or a server administrator. Allows all in DMs."""
+    # If the command is in a DM, there are no permissions to check, so allow it.
+    if not message.guild:
+        return True
+
+    # Check if the user is trusted or has administrator permissions in the guild.
+    if is_trusted_user(message.author.id) or message.author.guild_permissions.administrator:
+        return True
+
+    # If the user is not authorized, send a message and return False.
+    await message.channel.send("You need to be a trusted user or have Administrator permissions to use this command.")
+    return False
+
 async def check_moderation_permissions(message):
     """Check if user can use moderation commands"""
     if is_trusted_user(message.author.id):
@@ -263,7 +328,9 @@ def parse_time_duration(duration_str):
             return None # Indicate invalid format
 
 # --- FIX: Modified `gen` function to accept image data and handle conversation history correctly. ---
-def gen(model_name, conversation_history, user_message_text, streaming=False, system_instruction_text=None, image_data=None, mime_type=None):
+# --- REVISED GEN FUNCTION WITH MULTI-TOKEN AND MULTI-MODEL SUPPORT ---
+def gen(ignored_model_name, conversation_history, user_message_text, streaming=False, system_instruction_text=None, image_data=None, mime_type=None):
+    # Prepare contents (shared across all attempts)
     contents = []
 
     # Add the system instruction first.
@@ -273,32 +340,65 @@ def gen(model_name, conversation_history, user_message_text, streaming=False, sy
 
     # Add the actual conversation history, correctly converting dicts to Part objects
     for msg in conversation_history:
-        # Each 'part' in the history is a dict like {'text': '...'}. We need to convert it to a Part object.
-        # The code sometimes adds multiple parts to a single message (e.g., user text + image description).
         history_parts = [types.Part(text=p.get("text", "")) for p in msg.get("parts", [])]
-        if history_parts: # Only add if there are valid parts
+        if history_parts: 
             contents.append(types.Content(parts=history_parts, role=msg["role"]))
         
     # Create the parts for the current user's message
     user_message_parts = [types.Part(text=user_message_text)]
-    # If image data is provided, create a Blob and add it as a new part
     if image_data and mime_type:
         image_part = types.Part(
             inline_data=types.Blob(mime_type=mime_type, data=image_data)
         )
         user_message_parts.append(image_part)
     
-    # Add the current user's message with all its parts (text and possibly image)
+    # Add the current user's message
     contents.append(types.Content(parts=user_message_parts, role="user"))
 
-    if streaming:
-        return gemini_client.models.generate_content_stream(
-            model=model_name, contents=contents, config=config
-        )
+    last_exception = None
+
+    # Outer Loop: Iterate through Tokens
+    for api_key in api_keys:
+        # Initialize client with current token
+        try:
+            current_client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(api_version='v1alpha')
+            )
+        except Exception:
+            continue # If client init fails, try next token
+            
+        # Inner Loop: Iterate through Models
+        for current_model in available_models:
+            try:
+                if streaming:
+                    return current_client.models.generate_content_stream(
+                        model=current_model, contents=contents, config=config
+                    )
+                else:
+                    return current_client.models.generate_content(
+                        model=current_model, contents=contents, config=config
+                    )
+            except Exception as e:
+                last_exception = e
+                # Check for 5xx Server Errors - Stop immediately if server error
+                status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
+                
+                # If it's a 5xx error, raise it immediately (do not try other tokens/models)
+                if status_code and 500 <= status_code < 600:
+                    raise e
+                
+                # If it's 403, 404, 429: print error and continue loop
+                # The loop continues to the next model. 
+                # If all models fail for this token, the inner loop finishes, and we move to the next token.
+                print(f"Failed with model {current_model} on token ending ...{api_key[-5:]}: {e}. Retrying...")
+                continue
+
+    # If all tokens and models failed
+    if last_exception:
+        raise last_exception
     else:
-        return gemini_client.models.generate_content(
-            model=model_name, contents=contents, config=config
-        )
+        raise Exception("No tokens or models available.")
 # --- END FIX ---
 
 def safesplit(text):
@@ -333,7 +433,8 @@ async def replace_mentions_with_usernames(content: str, message: discord.Message
     processed_content = content
     for user in message.mentions:
         mention_string = user.mention
-        replacement_string = f"@{user.display_name}"
+        # --- MODIFIED: Use the new helper function to get the correct name ---
+        replacement_string = f"@{get_user_display_name(user)}"
         processed_content = processed_content.replace(mention_string, replacement_string)
         nickname_mention_string = f"<@!{user.id}>" # Handle nickname mentions too
         processed_content = processed_content.replace(nickname_mention_string, replacement_string)
@@ -519,9 +620,13 @@ async def answer(interaction: discord.Interaction, query: str, attachment: disco
 
     guild_config = get_convo(guild_id=context_id)
     conversation = guild_config["conversation"]
+    
+    # --- MODIFIED: Prepend user's name to the message for the AI ---
+    user_display_name = get_user_display_name(interaction.user)
+    formatted_query = f"{user_display_name}: {query}"
 
     # Add user message to conversation history
-    conversation.append({"role": "user", "parts": [{"text": query}]})
+    conversation.append({"role": "user", "parts": [{"text": formatted_query}]})
     update_convo(conversation, context_id)
 
     # --- STAGE 2: SECURE API CALL ---
@@ -529,10 +634,11 @@ async def answer(interaction: discord.Interaction, query: str, attachment: disco
     last_error_info = ""
 
     try:
+        # Simplified call - gen() now handles all token/model loops
         response = gen(
-            model,
+            available_models[0], # Model arg is ignored internally for iteration
             conversation_history=conversation[:-1],
-            user_message_text=query,
+            user_message_text=formatted_query, # Use the formatted query
             system_instruction_text=system_instruction_content,
             image_data=attachment_data,
             mime_type=attachment_mime_type
@@ -540,62 +646,8 @@ async def answer(interaction: discord.Interaction, query: str, attachment: disco
         llm_response = response.text
     except Exception as e:
         last_error_info = str(e)
-        print(f"Error with primary model ({model}): {e}")
-
-        # Fallback logic
-        try:
-            response = gen(
-                model1,
-                conversation_history=conversation[:-1],
-                user_message_text=query,
-                system_instruction_text=system_instruction_content,
-                image_data=attachment_data,
-                mime_type=attachment_mime_type
-            )
-            llm_response = response.text
-        except Exception as inner_e:
-            last_error_info = str(inner_e)
-            print(f"Error with fallback model 1 ({model1}): {inner_e}")
-            try:
-                response = gen(
-                    model2,
-                    conversation_history=conversation[:-1],
-                    user_message_text=query,
-                    system_instruction_text=system_instruction_content,
-                    image_data=attachment_data,
-                    mime_type=attachment_mime_type
-                )
-                llm_response = response.text
-            except Exception as another_e:
-                last_error_info = str(another_e)
-                print(f"Error with fallback model 2 ({model2}): {another_e}")
-                try:
-                    response = gen(
-                        model3,
-                        conversation_history=conversation[:-1],
-                        user_message_text=query,
-                        system_instruction_text=system_instruction_content,
-                        image_data=attachment_data,
-                        mime_type=attachment_mime_type
-                    )
-                    llm_response = response.text
-                except Exception as why_e:
-                    last_error_info = str(why_e)
-                    print(f"Error with fallback model 3 ({model3}): {why_e}")
-                    try:
-                        response = gen(
-                            model4,
-                            conversation_history=conversation[:-1],
-                            user_message_text=query,
-                            system_instruction_text=system_instruction_content,
-                            image_data=attachment_data,
-                            mime_type=attachment_mime_type
-                        )
-                        llm_response = response.text
-                    except Exception as final_e:
-                        last_error_info = str(final_e)
-                        print(f"Error with fallback model 4 ({model4}): {final_e}")
-                        llm_response = f"PRIMARY AND 4 OTHER FALLBACK MODELS FAILED. MORE INFORMATION: {last_error_info}"
+        print(f"All tokens and models failed: {e}")
+        llm_response = f"ALL MODELS AND TOKENS FAILED. MORE INFORMATION: {last_error_info}"
 
     # --- STAGE 3: OUTPUT FILTERING ---
     output_blacklist_phrases = [
@@ -614,7 +666,7 @@ async def answer(interaction: discord.Interaction, query: str, attachment: disco
     # Send the response and update memory
     await safesend(interaction.followup.send, f"> {query}\n\n{llm_response}")
 
-    if not llm_response.startswith("PRIMARY AND 4 OTHER FALLBACK MODELS FAILED.") and not llm_response == "sorry, but no prompt injecting":
+    if not llm_response.startswith("ALL MODELS AND TOKENS FAILED.") and not llm_response == "sorry, but no prompt injecting":
         conversation.append({"role": "model", "parts": [{"text": llm_response}]})
         update_convo(conversation, context_id)
 
@@ -686,12 +738,10 @@ async def delete_channel(interaction: discord.Interaction, channel: discord.Text
 @client.tree.command(name="view_memory", description="View the conversation memory for this server.")
 async def view_memory(interaction: discord.Interaction):
     """Displays the current conversation history for the guild."""
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message(
-            "You need Administrator permission to use this command.", 
-            ephemeral=True
-        )
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
+
     guild_config = get_convo(interaction.guild.id)
     conversation = guild_config["conversation"]
 
@@ -701,13 +751,19 @@ async def view_memory(interaction: discord.Interaction):
 
     memory_str = "--- Conversation Memory ---\n\n"
     for msg in conversation:
-        role = msg.get("role", "unknown").capitalize()
-        # --- FIX: Correctly access the text from the 'parts' list ---
+        role = msg.get("role", "unknown")
         parts = msg.get("parts", [])
-        text = parts[0].get("text", "[No Text]") if parts else "[No Content]" #new thingy added comment so i can edit 
+        text = " ".join([part.get("text", "") for part in parts]) if parts else "[No Content]"
 
-        # --- END FIX ---
-        memory_str += f"**{role}**: {text}\n\n"
+        if role == "user":
+            # The text already contains "DisplayName: message"
+            memory_str += f"{text}\n\n"
+        elif role == "model":
+            # Prepend the bot's name to its responses
+            memory_str += f"**{shape_name}**: {text}\n\n"
+        else: # Fallback for other potential roles
+            memory_str += f"**{role.capitalize()}**: {text}\n\n"
+
 
     # Handle long memory strings by sending as a file
     if len(memory_str) > 1900:
@@ -853,8 +909,9 @@ async def on_message(message):
         channel_tag = "{DM}"
     
     cleaned_user_message = await replace_mentions_with_usernames(message.content, message)
-    # This logging remains for ALL messages, as requested.
-    print(f"[{message.author}]({message.author.display_name}){channel_tag}  : {cleaned_user_message}")
+    # --- MODIFIED: Use the new helper function for logging the display name ---
+    user_display_name = get_user_display_name(message.author)
+    print(f"[{message.author}]({user_display_name}){channel_tag}  : {cleaned_user_message}")
     
     # --- IMPORTANT CHANGE 6 (MODIFIED): The block for adding user messages to memory has been moved. ---
     # It is now located inside the `if should_respond:` block to make it conditional.
@@ -888,24 +945,24 @@ async def on_message(message):
                 continue # Move to the next attachment
 
             try:
-                # Download the media content
+                # download
                 r = requests.get(attachment.url)
                 r.raise_for_status()  # Raise an exception for bad status codes (e.g., 404)
                 attachment_data = r.content
                 attachment_mime_type = attachment.content_type
                 print(f"Prepared attachment for processing: {attachment.filename} ({attachment_mime_type})")
-                # Once we have one valid attachment, stop and use it.
+                # comment
                 break
             except requests.exceptions.RequestException as e:
                 print(f"Failed to download attachment {attachment.url}: {e}")
-                continue # If download fails, try the next attachment
+                continue # so pro i know
     # --- END: REVISED ATTACHMENT HANDLING ---
 
     if message.author == client.user:
         return
     ran_command = False
     
-    # Help command
+    # Help
     if message.content.startswith(f'{prefix} help'):
         help_text = (
             f"**{shape_name} Bot Commands:**\n"
@@ -915,11 +972,12 @@ async def on_message(message):
             f"`{prefix} wack` - Wipe conversation history\n"
             f"`{prefix} toggle` - Toggle bot ignoring other bots\n"
             f"`{prefix} allow` - Allow bot to respond in channel\n"
+            f"`{prefix} change name {{new name}}` - Change how the bot sees your name\n"
             f"`{prefix} search (the thing you want to search)` - Makes the bot search the web\n\n"
             "**Slash Commands:**\n"
             "`/answer [query]` - Ask the AI a question directly.\n"
             "`/clear_memory` - Clear your personal conversation history.\n"
-            "`/view_memory` - Shows you the conversation history. (You need to be a moderator to use this.)\n"
+            "`/view_memory` - Shows you the conversation history.\n"
             "`/log <channel>` - Logs deleted/edited messages in a specific channel. (You need to be a moderator to use this.)\n"
             "`/create_channel <channel name>` - Creates a channel. (You need to be a moderator to use this.)\n"
             "`/delete_channel <channel>` - Deletes a channel. (You need to be a moderator to use this.)\n\n"
@@ -928,12 +986,29 @@ async def on_message(message):
             f"`{prefix} kick @user [reason]` - Kick a user\n"
             f"`{prefix} timeout @user <duration> [reason]` - Timeout a user (e.g., 10m, 1h, 1d)\n"
             "Mention the bot or reply to its message to chat.\n\n"
-            "Powered by Amorphous Discord Engine and Gemini 2.0 Flash but actually powered by Python"
+            "Powered by Amorphous Discord Engine and Gemini but actually powered by Python"
         )
         await message.channel.send(help_text)
         ran_command = True
 
-    # --- START: MOD COMMAND FIX ---
+    # name cmd
+    if message.content.startswith(f'{prefix} change name '):
+        new_name = message.content[len(f'{prefix} change name '):].strip()
+        if new_name:
+            user_custom_names[message.author.id] = new_name
+            save_custom_names()
+            await message.channel.send(f"I will now see you as **{new_name}**")
+        else:
+            # idk what it does but it works
+            if message.author.id in user_custom_names:
+                del user_custom_names[message.author.id]
+                save_custom_names()
+                await message.channel.send(f"I'll now see you as your default name")
+            else:
+                await message.channel.send("Please provide a name")
+        ran_command = True
+    # end
+        
     # --- BAN COMMAND --
     if message.content.startswith(f"{prefix} ban "):
         ran_command = True
@@ -946,20 +1021,20 @@ async def on_message(message):
             return
 
         target_arg = args[0]
-        reason = args[1] if len(args) > 1 else f"Banned by {message.author.display_name}"
+        reason = args[1] if len(args) > 1 else f"Banned by {get_user_display_name(message.author)}"
         
         target_member = await find_member(message, target_arg)
         
         if not target_member:
             await message.channel.send("User not found.")
         elif is_trusted_user(target_member.id):
-            await message.channel.send("sory not banning the trusted user, u might be a raider or smth")
+            await message.channel.send("The user is a trusted user.")
         elif target_member.id == message.author.id:
             await message.channel.send("You cannot ban yourself.")
         else:
             try:
                 await target_member.ban(reason=reason)
-                await message.channel.send(f"Banned **{target_member.display_name}** | Reason: {reason}")
+                await message.channel.send(f"Banned **{get_user_display_name(target_member)}** | Reason: {reason}")
             except discord.Forbidden:
                 await message.channel.send("I don't have permission to ban this user.")
             except Exception as e:
@@ -977,20 +1052,20 @@ async def on_message(message):
             return
 
         target_arg = args[0]
-        reason = args[1] if len(args) > 1 else f"Kicked by {message.author.display_name}"
+        reason = args[1] if len(args) > 1 else f"Kicked by {get_user_display_name(message.author)}"
         
         target_member = await find_member(message, target_arg)
 
         if not target_member:
             await message.channel.send("User not found.")
         elif is_trusted_user(target_member.id):
-            await message.channel.send("sory not kicking the trusted user, u might be a raider or smth")
+            await message.channel.send("The user is a trusted user.") #shouldnt just ctrl+v the code i got ngl
         elif target_member.id == message.author.id:
             await message.channel.send("You cannot kick yourself.")
         else:
             try:
                 await target_member.kick(reason=reason)
-                await message.channel.send(f"Kicked **{target_member.display_name}** | Reason: {reason}")
+                await message.channel.send(f"Kicked **{get_user_display_name(target_member)}** | Reason: {reason}")
             except discord.Forbidden:
                 await message.channel.send("I don't have permission to kick this user.")
             except Exception as e:
@@ -1009,14 +1084,14 @@ async def on_message(message):
 
         target_arg = args[0]
         duration_str = args[1]
-        reason = args[2] if len(args) > 2 else f"Timed out by {message.author.display_name}"
+        reason = args[2] if len(args) > 2 else f"Timed out by {get_user_display_name(message.author)}"
 
         target_member = await find_member(message, target_arg)
         
         if not target_member:
             await message.channel.send("User not found.")
         elif is_trusted_user(target_member.id):
-            await message.channel.send("sory not timing out the trusted user, u might be a raider or smth")
+            await message.channel.send("The user is a trusted user.") #WHY
         elif target_member.id == message.author.id:
             await message.channel.send("You cannot timeout yourself.")
         else:
@@ -1029,13 +1104,13 @@ async def on_message(message):
                 until = discord.utils.utcnow() + duration
                 await target_member.timeout(until, reason=reason)
                 await message.channel.send(
-                    f"Timed out **{target_member.display_name}** for {duration_str} | Reason: {reason}"
+                    f"Timed out **{get_user_display_name(target_member)}** for {duration_str} | Reason: {reason}"
                 )
             except discord.Forbidden:
                 await message.channel.send("I don't have permission to timeout this user.")
             except Exception as e:
                 await message.channel.send(f"Error timing out user: {e}")
-    # --- END: MOD COMMAND FIX ---
+    # gemini u dummy stop pls
 
     # --- START: SEARCH COMMAND FALLBACK ---
     if message.content.startswith(f"{prefix} search "):
@@ -1047,36 +1122,13 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                response = gen(model, [], search_prompt_text, system_instruction_text=system_instruction_content)
+                # gen
+                response = gen(available_models[0], [], search_prompt_text, system_instruction_text=system_instruction_content)
                 answer = response.text
             except Exception as e:
                 last_error_info = str(e)
-                print(f"[ERROR in search - model ({model})]: {e}")
-                try:
-                    response = gen(model1, [], search_prompt_text, system_instruction_text=system_instruction_content)
-                    answer = response.text
-                except Exception as e1:
-                    last_error_info = str(e1)
-                    print(f"[ERROR in search - model ({model1})]: {e1}")
-                    try:
-                        response = gen(model2, [], search_prompt_text, system_instruction_text=system_instruction_content)
-                        answer = response.text
-                    except Exception as e2:
-                        last_error_info = str(e2)
-                        print(f"[ERROR in search - model ({model2})]: {e2}")
-                        try:
-                            response = gen(model3, [], search_prompt_text, system_instruction_text=system_instruction_content)
-                            answer = response.text
-                        except Exception as e3:
-                            last_error_info = str(e3)
-                            print(f"[ERROR in search - model ({model3})]: {e3}")
-                            try:
-                                response = gen(model4, [], search_prompt_text, system_instruction_text=system_instruction_content)
-                                answer = response.text
-                            except Exception as e4:
-                                last_error_info = str(e4)
-                                print(f"[ERROR in search - model ({model4})]: {e4}")
-                                answer = f"All models failed to search. Last error: {last_error_info}"
+                print(f"[ERROR in search]: {e}")
+                answer = f"All models failed to search. Last error: {last_error_info}"
         
         if not answer:
             answer = "I couldn't find anything."
@@ -1086,6 +1138,7 @@ async def on_message(message):
         
     # Allow command        
     if message.content.startswith(f'{prefix} allow'):
+        if not await check_admin_or_trusted(message): return
         await message.channel.send("Allowed.")
         if message.channel.id in ignored_channels:
             ignored_channels.remove(message.channel.id)
@@ -1093,27 +1146,30 @@ async def on_message(message):
         
     # Activate command
     if message.content.startswith(f'{prefix} activate'):
+        if not await check_admin_or_trusted(message): return
         activated_channels.append(message.channel.id)
         await message.channel.send('(system response)\n>(activated)')
         ran_command = True
         
     # Deactivate command
     if message.content.startswith(f'{prefix} deactivate'):
+        if not await check_admin_or_trusted(message): return
+        ran_command = True
         if message.channel.id in activated_channels:
             activated_channels.remove(message.channel.id)
             await message.channel.send('(system response)\n> Deactivated.')
         else:
-            if await check_permissions(message):
-                if message.channel.id not in ignored_channels:
-                    await message.channel.send('(system response)\nAdded to exclusion.')
-                    ignored_channels.append(message.channel.id)
+            if message.channel.id not in ignored_channels:
+                await message.channel.send('(system response)\nAdded to exclusion.')
+                ignored_channels.append(message.channel.id)
             else:
-                await message.channel.send('(system response)\nHELL NAW; ')
-        ran_command = True
+                await message.channel.send('(system response)\n> Channel is already on the exclusion list.')
+
 
     # --- START OF MODIFICATION: Toggle Command ---
     # Toggle command
     if message.content.startswith(f"{prefix} toggle"):
+        if not await check_admin_or_trusted(message): return
         # This command flips the bot's behavior regarding other bots.
         # True (default) = Ignore other bots completely.
         # False = Listen to other bots for context but do not reply to them.
@@ -1131,6 +1187,7 @@ async def on_message(message):
         
     # Wack command
     if message.content.startswith(f'{prefix} wack'):
+        if not await check_admin_or_trusted(message): return
         conversation.clear()
         update_convo(conversation, guild_id) # Save the cleared conversation
         await message.channel.send('(system response)\n> Conversation history wiped! 💀')
@@ -1176,10 +1233,12 @@ async def on_message(message):
         # The 'toggle' variable is True by default, meaning we ignore bots.
         # If 'toggle' is False, we are in "listening mode".
         if not toggle:
-            # Add the other bot's message to conversation history for context.
-            conversation.append({"role": "user", "parts": [{"text": cleaned_user_message}]})
+            # --- MODIFIED: Prepend bot's name to the message for context ---
+            bot_name = get_user_display_name(message.author)
+            formatted_bot_message = f"{bot_name}: {cleaned_user_message}"
+            conversation.append({"role": "user", "parts": [{"text": formatted_bot_message}]})
             update_convo(conversation, guild_id)
-            print(f"DEBUG: Bot message from '{message.author.display_name}' saved to memory.")
+            print(f"DEBUG: Bot message from '{bot_name}' saved to memory.")
 
         # CRITICAL: Whether we listened or not, we *always* stop processing here for bot messages
         # to prevent the bot from ever replying to another bot, which would cause a loop.
@@ -1203,7 +1262,7 @@ async def on_message(message):
     if message.channel.id in activated_channels:
         should_respond = True
     else:
-        # Respond if pinged or random chance (1 in 100000) - original logic
+        # sigma
         if client.user in message.mentions or random.randint(1, 100000) == 1:
             should_respond = True
             
@@ -1214,22 +1273,24 @@ async def on_message(message):
         should_respond = True
         
     if should_respond:
-        # --- MODIFICATION AS PER YOUR REQUEST ---
-        # The user's message is now added to the conversation history ONLY when the bot decides to respond.
-        conversation.append({"role": "user", "parts": [{"text": cleaned_user_message}]})
-        update_convo(conversation, guild_id) # Save the updated conversation
-        # --- END MODIFICATION ---
+        # todo fix this
+        formatted_user_message = f"{user_display_name}: {cleaned_user_message}"
+        
+        #todo fix this
+        conversation.append({"role": "user", "parts": [{"text": formatted_user_message}]})
+        update_convo(conversation, guild_id)
 
         llm_response = ""
         last_error_info = "" # Only store the last error message from a failed model attempt
 
         try:
             async with message.channel.typing():
-                # --- CHANGE: Call `gen` with prepared media data for a single multi-modal response ---
+                # --- CHANGE: Call `gen` with prepared media data and the formatted message ---
+                # Simplified call - gen() now handles loops internally
                 response = gen(
-                    model,
+                    available_models[0], # Model arg ignored for iteration
                     conversation_history=conversation[:-1],
-                    user_message_text=cleaned_user_message,
+                    user_message_text=formatted_user_message,
                     system_instruction_text=system_instruction_content,
                     image_data=attachment_data,
                     mime_type=attachment_mime_type
@@ -1237,67 +1298,8 @@ async def on_message(message):
                 llm_response = response.text
         except Exception as e:
             last_error_info = str(e) # Store error
-            print(f"Error with primary model ({model}): {e}") # Debug print
-
-            try:
-                async with message.channel.typing():
-                    response = gen(
-                        model1,
-                        conversation_history=conversation[:-1],
-                        user_message_text=cleaned_user_message,
-                        system_instruction_text=system_instruction_content,
-                        image_data=attachment_data,
-                        mime_type=attachment_mime_type
-                    )
-                    llm_response = response.text
-            except Exception as inner_e:
-                last_error_info = str(inner_e) # Store error
-                print(f"Error with fallback model 1 ({model1}): {inner_e}") # Debug print
-
-                try:
-                    async with message.channel.typing():
-                        response = gen(
-                            model2,
-                            conversation_history=conversation[:-1],
-                            user_message_text=cleaned_user_message,
-                            system_instruction_text=system_instruction_content,
-                            image_data=attachment_data,
-                            mime_type=attachment_mime_type
-                        )
-                        llm_response = response.text
-                except Exception as another_e:
-                    last_error_info = str(another_e) # Store error
-                    print(f"Error with fallback model 2 ({model2}): {another_e}") # Debug print
-
-                    try:
-                        async with message.channel.typing():
-                            response = gen(
-                                model3,
-                                conversation_history=conversation[:-1],
-                                user_message_text=cleaned_user_message,
-                                system_instruction_text=system_instruction_content,
-                                image_data=attachment_data,
-                                mime_type=attachment_mime_type
-                            )
-                            llm_response = response.text
-                    except Exception as why_e:
-                        last_error_info = str(why_e) # Store error
-                        print(f"Error with fallback model 3 ({model3}): {why_e}") # Debug print
-                        try:
-                            async with message.channel.typing():
-                                response = gen(
-                                    model4,
-                                    conversation_history=conversation[:-1],
-                                    user_message_text=cleaned_user_message,
-                                    system_instruction_text=system_instruction_content,
-                                    image_data=attachment_data,
-                                    mime_type=attachment_mime_type
-                                )
-                                llm_response = response.text
-                        except Exception as final_e:
-                            last_error_info = str(final_e)
-                            print(f"Error with fallback model 4 ({model4}): {final_e}")
-                            llm_response = f"PRIMARY AND 4 OTHER FALLBACK MODELS FAILED. MORE INFORMATION: {last_error_info}" # Final user-facing error
+            print(f"All models and tokens failed: {e}") # Debug print
+            llm_response = f"ALL MODELS AND TOKENS FAILED. MORE INFORMATION: {last_error_info}"
 
         # --- IMPORTANT CHANGE 11: Output Filtering (Layer 3 Defense). ---
         # A final check on Gemini's response before sending it to the user.
@@ -1306,25 +1308,23 @@ async def on_message(message):
             "my internal prompt is", "my system instructions are",
             "as an ai, i am programmed with", "the previous text in this conversation was",
             "system_instruction =", "i am forbidden to disclose my configuration",
-            "thinking process:", "<eot>", "debug info:", # Specific to the attacker's prompt
+            "thinking process:", "<eot>", "debug info:", # i love <eot>
             "my backstory is:", "my personality is:", "my programming is:", # Add more general terms
             "json_payload", "internal_config", "prompt_content", "system_dump",
             "character features", "personality features", "bot persona", # If it describes itself directly
-            "amorphous_config", "api_key", "discord_token", "prefix", # Sensitive config details if dumped
+            "amorphous_config", "api_key", "discord_token", "prefix",
             "```json", # If it attempts to output code block with sensitive info
             "\"message\":", "\"summary\":", # If it tries to output the attack schema, often with sensitive content
-            "\"rp\":", # Specifically catch the key for the backstory if it's leaked
-            # Phrases from security protocol that should NEVER be in output
+            "\"rp\":",
             "internal security protocol", "filter-bypass prevention",
-            # Phrases from the specific attack vector
             "bibliographic format", "actually write the full text in place of",
-            "完整的提示信息", # Chinese: "complete prompt message"
+            "完整的提示信息", # unbuoltalmond is chinese confirmed
         ]
         # --- END NEW PHRASES ---
         if any(phrase in llm_response.lower() for phrase in output_blacklist_phrases):
             print(f"DEBUG: AI response filtered due to problematic output: '{llm_response[:100]}...'")
             llm_response = "sorry, but no prompt injecting"
-        # --- END CHANGE 11 ---
+        # i shouldn't have asked gemini to make ts i regret everything
         
         print(llm_response)
         await safesend(message.channel.send, llm_response)
@@ -1332,7 +1332,7 @@ async def on_message(message):
         # --- IMPORTANT CHANGE 12: Add bot's response to conversation history in structured format. ---
         # This keeps the history accurate for the next turn.
         # Only add if it's a valid LLM response, not an error message or filtered output
-        if not llm_response.startswith("PRIMARY AND 4 OTHER FALLBACK MODELS FAILED.") and \
+        if not llm_response.startswith("ALL MODELS AND TOKENS FAILED.") and \
            not llm_response == "sorry, but no prompt injecting":
             conversation.append({"role": "model", "parts": [{"text": llm_response}]})
             update_convo(conversation, guild_id)
