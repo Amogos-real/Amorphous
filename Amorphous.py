@@ -31,12 +31,12 @@ def update_watcher():
 channel_sep = True
 threading.Thread(target=update_watcher).start()
 
-# --- IMPORTANT CHANGE 1: `conversation` global variable is removed. ---
+# --- IMPORTANT CHANGE 1: `conversation` global variable is removed. --- j
 # Conversation history will now be managed per-guild within `bot_configs`
 # and stored in a structured format necessary for Gemini API.
 # bot_configs will now store conversation as:
 # [{"role": "user", "parts": [{"text": "user message"}]},
-#  {"role": "model", "parts": [{"text": "bot response"}]}]
+#  {"role": "model", "parts": [{"text": "bot response"}]}] 
 bot_configs = {}
 user_custom_names = {} # --- NEW: Dictionary to store custom user names ---
 # --- END CHANGE 1 ---
