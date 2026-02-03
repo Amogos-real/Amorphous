@@ -16,6 +16,7 @@ Rp=(the prompt for the bot)
 Name=(name that the bot will have in rp)
 Db=(your db token) (https://astra.datastax.com/ get it here)
 End=(db endpoint link) (https://astra.datastax.com/ get the link here)
+multiple apis soo name the envs Gemini1, Gemini2 etc Gemini still works but uhh rate limits yeah
 oh also if u wanna bypass the restrictions when u wanna use some admin commands when ur not admin jst put ur user id in the trusted_users list
 also pls know that the second ur internet becomes bad, it might just stop working. also if u run this on ur local computer and then turn it off, the bot will die (turn off)
 so uh keep ur computer on 24/7 or get a server XD
